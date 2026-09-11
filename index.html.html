@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InjuryCare AI — Smart Triage & First-Aid Assistant</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    .glassmorphism {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .pulse-emergency {
+      animation: pulse-red 2s infinite;
+    }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col font-sans selection:bg-teal-100 selection:text-teal-900">
+
+  <!-- ================= TOP HEADER & NAV ================= -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2.5 cursor-pointer" onclick="navigateTo('home')">
+        <div class="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-md shadow-teal-500/20">
+          <i data-lucide="cross" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-tight text-slate-800">InjuryCare <span class="text-teal-600">AI</span></h1>
+          <p class="text-[11px] text-slate-500 font-medium" id="header-tagline">Clinical Triage & First Aid</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Language Selector -->
+        <select id="lang-select" onchange="changeLanguage(this.value)" class="bg-slate-100 border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500 text-slate-700">
+          <option value="en">English (EN)</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+        </select>
+
+        <!-- Emergency Dial Button -->
+        <a href="tel:112" class="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition">
+          <i data-lucide="phone-call" class="w-3.5 h-3.5"></i>
+          <span>SOS: 112 / 911</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN CONTENT CONTAINER ================= -->
+  <main class="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-6 flex flex-col justify-center">
+
+    <!-- SCREEN 1: HOME / DASHBOARD -->
+    <section id="screen-home" class="space-y-6">
+      <div class="bg-gradient-to-br from-teal-900 via-teal-800 to-slate-900 text-white rounded-3xl p-6 sm:p-10 shadow-xl relative overflow-hidden">
+        <div class="relative z-10 max-w-2xl space-y-4">
+          <span class="inline-flex items-center gap-1.5 bg-teal-500/20 text-teal-200 border border-teal-400/30 text-xs px-3 py-1 rounded-full font-medium">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Fast Clinical Risk Assessment
+          </span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight" id="home-hero-title">
+            Injured? Get instant triage & first-aid steps.
+          </h2>
+          <p class="text-teal-100 text-sm sm:text-base leading-relaxed" id="home-hero-sub">
+            Capture a photo, answer a few clinical questions, and receive preliminary risk screening, immediate precautions, and nearby hospital guidance.
+          </p>
+          <div class="pt-2 flex flex-wrap gap-3">
+            <button onclick="startTriage()" class="bg-teal-400 hover:bg-teal-300 text-slate-950 font-bold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center gap-2 text-sm sm:text-base">
+              <i data-lucide="camera" class="w-5 h-5"></i>
+              <span id="btn-start-assess">Assess Injury Now</span>
+            </button>
+            <button onclick="navigateTo('firstaid-library')" class="bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold px-5 py-3.5 rounded-xl transition flex items-center gap-2 text-sm sm:text-base">
+              <i data-lucide="book-open" class="w-5 h-5"></i>
+              <span id="btn-browse-fa">First Aid Manual</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div onclick="startTriage()" class="bg-white p-5 rounded-2xl border border-slate-200 hover:border-teal-400 cursor-pointer shadow-sm hover:shadow transition group">
+          <div class="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3 group-hover:scale-105 transition">
+            <i data-lucide="scan-line" class="w-6 h-6"></i>
+          </div>
+          <h3 class="font-bold text-slate-800">Visual Wound Check</h3>
+          <p class="text-xs text-slate-500 mt-1">Image analysis with blur & lighting check paired with clinical screening.</p>
+        </div>
+
+        <div onclick="navigateTo('firstaid-library')" class="bg-white p-5 rounded-2xl border border-slate-200 hover:border-teal-400 cursor-pointer shadow-sm hover:shadow transition group">
+          <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:scale-105 transition">
+            <i data-lucide="bandage" class="w-6 h-6"></i>
+          </div>
+          <h3 class="font-bold text-slate-800">Emergency Protocols</h3>
+          <p class="text-xs text-slate-500 mt-1">Immediate step-by-step guides for burns, bleeding, bites, and sprains.</p>
+        </div>
+
+        <div onclick="navigateTo('hospitals')" class="bg-white p-5 rounded-2xl border border-slate-200 hover:border-teal-400 cursor-pointer shadow-sm hover:shadow transition group">
+          <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-105 transition">
+            <i data-lucide="map-pin" class="w-6 h-6"></i>
+          </div>
+          <h3 class="font-bold text-slate-800">Hospital Finder</h3>
+          <p class="text-xs text-slate-500 mt-1">Locate trauma centers, 24/7 ERs, and urgent clinics near your GPS position.</p>
+        </div>
+      </div>
+
+      <!-- Legal Medical Disclaimer Banner -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl">
+        <div class="flex gap-3">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"></i>
+          <div class="text-xs text-amber-900 leading-relaxed">
+            <strong class="font-semibold">Important Medical Notice:</strong> InjuryCare AI provides preliminary health screening and educational first-aid instructions only. It does <strong>not</strong> provide medical diagnoses. For severe trauma, heavy bleeding, or loss of consciousness, call your local emergency service (112, 911, or 108) immediately.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 2: CAMERA & PHOTO UPLOAD -->
+    <section id="screen-camera" class="hidden space-y-5">
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('home')" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+        </button>
+        <span class="text-xs font-bold text-teal-600 uppercase tracking-wider">Step 1 of 2: Wound Photograph</span>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5 text-center">
+        <div class="max-w-md mx-auto space-y-2">
+          <h2 class="text-xl font-bold text-slate-800">Upload or Capture Injury Photo</h2>
+          <p class="text-xs text-slate-500">Ensure the injury is well-lit and centered. If you cannot take a photo, you may skip directly to questions.</p>
+        </div>
+
+        <!-- Preview Box / Canvas -->
+        <div class="relative w-full max-w-sm mx-auto h-64 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center overflow-hidden bg-slate-50" id="photo-container">
+          <div id="photo-placeholder" class="flex flex-col items-center gap-2 text-slate-400">
+            <i data-lucide="image-plus" class="w-12 h-12 stroke-1"></i>
+            <span class="text-xs font-medium">No image selected yet</span>
+          </div>
+          <img id="image-preview" class="hidden w-full h-full object-cover" />
+          <canvas id="analysis-canvas" class="hidden"></canvas>
+        </div>
+
+        <!-- Quality Warning Alert (Blur / Lighting) -->
+        <div id="quality-alert" class="hidden max-w-sm mx-auto p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs text-left flex items-start gap-2.5">
+          <i data-lucide="alert-circle" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"></i>
+          <span id="quality-alert-text">The uploaded image appears blurry or has low lighting. Please ensure adequate lighting or proceed to symptom questions.</span>
+        </div>
+
+        <!-- Camera Controls -->
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <label class="cursor-pointer bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs px-5 py-3 rounded-xl shadow transition flex items-center gap-2">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+            <span>Take Photo / Upload</span>
+            <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)" />
+          </label>
+
+          <button onclick="skipPhoto()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-5 py-3 rounded-xl transition">
+            Skip Photo (Answer Questions Only)
+          </button>
+        </div>
+
+        <div id="photo-proceed-btn" class="hidden pt-2">
+          <button onclick="navigateTo('questions')" class="w-full max-w-sm mx-auto bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow">
+            <span>Proceed to Symptom Questions</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: CLINICAL QUESTIONS -->
+    <section id="screen-questions" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('camera')" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Photo
+        </button>
+        <span class="text-xs font-bold text-teal-600 uppercase tracking-wider">Step 2 of 2: Symptoms & Mechanism</span>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+        <!-- Voice Input Assist -->
+        <div class="flex items-center justify-between bg-teal-50/70 border border-teal-200 p-3.5 rounded-xl">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center">
+              <i data-lucide="mic" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-slate-800">Voice Assistant</h4>
+              <p class="text-[11px] text-slate-500">Dictate what happened (e.g. "I fell from stairs and my wrist is swollen")</p>
+            </div>
+          </div>
+          <button id="voice-btn" onclick="toggleVoiceInput()" class="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+            <i data-lucide="mic-pulse" class="w-3.5 h-3.5 text-rose-500"></i>
+            <span id="voice-status">Speak</span>
+          </button>
+        </div>
+
+        <form id="triage-form" onsubmit="calculateTriage(event)" class="space-y-6">
+          
+          <!-- Q1: Mechanism -->
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-800">1. What caused the injury?</label>
+            <select name="q1_cause" required class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+              <option value="fall">Trip / Fall from ground or stairs</option>
+              <option value="sharp">Cut by sharp object (glass, knife, metal)</option>
+              <option value="burn">Thermal / Hot liquid / Fire / Steam Burn</option>
+              <option value="animal">Animal bite or scratch (Dog, Cat, etc.)</option>
+              <option value="insect">Insect bite / Bee or Wasp sting</option>
+              <option value="road">Road traffic accident / Bike collision</option>
+              <option value="sports">Sports impact / Sudden twist</option>
+              <option value="blunt">Blunt object impact / Heavy object drop</option>
+              <option value="other">Other cause</option>
+            </select>
+          </div>
+
+          <!-- Q2: Body Location -->
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-800">2. Where is the injury located?</label>
+            <select name="q2_location" required class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+              <option value="hand">Hand / Wrist / Fingers</option>
+              <option value="foot">Foot / Ankle / Toes</option>
+              <option value="arm">Arm / Elbow / Shoulder</option>
+              <option value="leg">Leg / Knee / Shin</option>
+              <option value="head">Head / Scalp</option>
+              <option value="eye">Eye / Surrounding Eye Area</option>
+              <option value="face">Face / Mouth / Nose</option>
+              <option value="neck">Neck / Throat</option>
+              <option value="chest">Chest / Ribs</option>
+              <option value="abdomen">Abdomen / Torso</option>
+            </select>
+          </div>
+
+          <!-- Q3: Bleeding -->
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-800">3. Is there active bleeding?</label>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <label class="cursor-pointer border border-slate-200 rounded-xl p-3 text-center text-xs has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:font-bold">
+                <input type="radio" name="q4_bleeding" value="none" checked class="hidden" /> No Bleeding
+              </label>
+              <label class="cursor-pointer border border-slate-200 rounded-xl p-3 text-center text-xs has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:font-bold">
+                <input type="radio" name="q4_bleeding" value="minor" class="hidden" /> Minor Oozing
+              </label>
+              <label class="cursor-pointer border border-slate-200 rounded-xl p-3 text-center text-xs has-[:checked]:bg-amber-50 has-[:checked]:border-amber-500 has-[:checked]:font-bold">
+                <input type="radio" name="q4_bleeding" value="moderate" class="hidden" /> Moderate Bleed
+              </label>
+              <label class="cursor-pointer border border-rose-200 rounded-xl p-3 text-center text-xs has-[:checked]:bg-rose-50 has-[:checked]:border-rose-600 has-[:checked]:font-bold text-rose-700">
+                <input type="radio" name="q4_bleeding" value="spurting" class="hidden" /> Spurting / Won't Stop
+              </label>
+            </div>
+          </div>
+
+          <!-- Q4: Pain & Mobility -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-800">4. Pain Level</label>
+              <select name="q5_pain" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                <option value="mild">Mild (1 - 3: manageable)</option>
+                <option value="moderate">Moderate (4 - 6: uncomfortable)</option>
+                <option value="severe">Severe (7 - 10: intense, excruciating)</option>
+              </select>
+            </div>
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-800">5. Can you move the injured part / bear weight?</label>
+              <select name="q6_movement" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                <option value="normal">Yes, full normal movement</option>
+                <option value="restricted">Partial / Hurts to move</option>
+                <option value="none">Cannot move at all / Cannot bear weight</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Q5: Swelling & Deformity -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-800">6. Swelling status?</label>
+              <select name="q7_swelling" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                <option value="none">No swelling</option>
+                <option value="mild">Mild localized swelling</option>
+                <option value="rapid">Rapid / severe swelling</option>
+              </select>
+            </div>
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-800">7. Visible Deformity?</label>
+              <select name="q7_deformity" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                <option value="none">Normal appearance / No deformity</option>
+                <option value="crooked">Abnormal angle / Unnatural bend</option>
+                <option value="bone_exposed">Bone piercing through skin (Open Fracture)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Q6: Emergency Red Flags -->
+          <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2.5">
+            <span class="block text-xs font-bold text-rose-900 flex items-center gap-1.5">
+              <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-600"></i>
+              8. Check any emergency warning signs present:
+            </span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-rose-950">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="redflags" value="loc" class="rounded text-rose-600 focus:ring-rose-500" />
+                Loss of consciousness / Fainting
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="redflags" value="breathing" class="rounded text-rose-600 focus:ring-rose-500" />
+                Difficulty breathing / Shortness of breath
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="redflags" value="vomiting" class="rounded text-rose-600 focus:ring-rose-500" />
+                Vomiting / Confusion after head impact
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="redflags" value="numbness" class="rounded text-rose-600 focus:ring-rose-500" />
+                Numbness / Cold, pale or bluish fingers/toes
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm">
+            <i data-lucide="activity" class="w-5 h-5"></i>
+            <span>Generate Risk Triage & First-Aid Guidance</span>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- SCREEN 4: ASSESSMENT & TRIAGE RESULTS -->
+    <section id="screen-result" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('home')" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <i data-lucide="home" class="w-4 h-4"></i> Return to Home
+        </button>
+        <span class="text-xs text-slate-400">Assessment ID: <span id="assessment-id" class="font-mono">#IC-4091</span></span>
+      </div>
+
+      <!-- Severity Card Container -->
+      <div id="triage-card" class="rounded-3xl p-6 sm:p-8 border shadow-lg space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-5">
+          <div class="flex items-center gap-3.5">
+            <div id="triage-icon-box" class="w-14 h-14 rounded-2xl flex items-center justify-center text-white flex-shrink-0 shadow">
+              <i id="triage-icon" data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500" id="triage-level-badge">Risk Level</div>
+              <h2 id="triage-level-title" class="text-2xl font-black tracking-tight">Level Title</h2>
+            </div>
+          </div>
+          <div id="action-badge-container"></div>
+        </div>
+
+        <!-- Clinical Explanation -->
+        <div class="space-y-2">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Suspected Category & Rationale</h4>
+          <p id="triage-reason" class="text-sm leading-relaxed text-slate-700 font-medium"></p>
+        </div>
+
+        <!-- Precautions & Steps -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
+            <h4 class="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
+              Immediate Precautions (Do's)
+            </h4>
+            <ul id="triage-dos" class="text-xs text-slate-600 space-y-1.5 list-disc list-inside"></ul>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
+            <h4 class="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+              <i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i>
+              Actions to Avoid (Don'ts)
+            </h4>
+            <ul id="triage-donts" class="text-xs text-slate-600 space-y-1.5 list-disc list-inside"></ul>
+          </div>
+        </div>
+
+        <!-- Find Care Button -->
+        <div class="pt-2 flex flex-wrap gap-3">
+          <button onclick="navigateTo('hospitals')" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow">
+            <i data-lucide="map-pin" class="w-4 h-4 text-teal-400"></i>
+            <span>Locate Nearby Hospitals & Clinics</span>
+          </button>
+          <button onclick="window.print()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition">
+            <i data-lucide="printer" class="w-4 h-4"></i> Save Report
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 5: FIRST AID LIBRARY -->
+    <section id="screen-firstaid-library" class="hidden space-y-5">
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('home')" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Home
+        </button>
+        <span class="text-xs font-bold text-teal-600 uppercase tracking-wider">Emergency Manual</span>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <h2 class="text-xl font-bold text-slate-800">Quick First-Aid Procedures</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="fa-accordion">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 6: NEARBY HOSPITALS & CLINICS -->
+    <section id="screen-hospitals" class="hidden space-y-5">
+      <div class="flex items-center justify-between">
+        <button onclick="navigateTo('home')" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+        </button>
+        <button onclick="getUserLocation()" class="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh GPS
+        </button>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div>
+          <h2 class="text-xl font-bold text-slate-800">Nearby Healthcare Facilities</h2>
+          <p class="text-xs text-slate-500" id="gps-status">Finding medical facilities near your current location...</p>
+        </div>
+
+        <!-- Map Container -->
+        <div id="map" class="w-full h-64 rounded-xl border border-slate-200 bg-slate-100 z-10"></div>
+
+        <!-- Facility List -->
+        <div class="space-y-2.5 pt-2" id="facility-list">
+          <!-- Populated by script -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
+    <p>InjuryCare AI © 2026. Strictly for initial guidance & educational triage. Compliant with SaMD wellness standards.</p>
+  </footer>
+
+  <!-- ================= SCRIPT & TRIAGE ENGINE ================= -->
+  <script>
+    // Global State
+    let currentLang = 'en';
+    let uploadedImageDataUrl = null;
+    let mapInstance = null;
+    let userCoords = { lat: 17.3850, lng: 78.4867 }; // Default fallback coordinates
+
+    // Multi-Language Strings
+    const translations = {
+      en: {
+        tagline: "Clinical Triage & First Aid",
+        heroTitle: "Injured? Get instant triage & first-aid steps.",
+        heroSub: "Capture a photo, answer a few clinical questions, and receive preliminary risk screening, immediate precautions, and nearby hospital guidance.",
+        startBtn: "Assess Injury Now",
+        faBtn: "First Aid Manual"
+      },
+      hi: {
+        tagline: "क्लिनिकल ट्राइएज और प्राथमिक चिकित्सा",
+        heroTitle: "चोट लगी है? तुरंत जांच और प्राथमिक उपचार पाएं।",
+        heroSub: "फोटो लें, कुछ सवालों के जवाब दें, और जोखिम स्तर, सावधानियां और नजदीकी अस्पताल की जानकारी प्राप्त करें।",
+        startBtn: "चोट की जांच करें",
+        faBtn: "प्राथमिक चिकित्सा गाइड"
+      },
+      te: {
+        tagline: "క్లినికల్ ట్రయేజ్ మరియు ప్రథమ చికిత్స",
+        heroTitle: "గాయపడ్డారా? తక్షణ అంచనా మరియు ప్రథమ చికిత్స పొందండి.",
+        heroSub: "ఫోటో తీయండి, కొన్ని ప్రశ్నలకు సమాధానమివ్వండి, ప్రమాద తీవ్రత మరియు సమీప ఆసుపత్రుల వివరాలు పొందండి.",
+        startBtn: "గాయం అంచనా ప్రారంభించండి",
+        faBtn: "ప్రథమ చికిత్స మాన్యువల్"
+      }
+    };
+
+    // First Aid Knowledgebase
+    const firstAidData = [
+      {
+        title: "🩹 Minor Cuts & Scrapes",
+        steps: [
+          "Wash hands with soap and water before touching the wound.",
+          "Apply light, direct pressure with a clean cloth to stop minor oozing.",
+          "Rinse gently under cool tap water for 5 minutes to remove dirt.",
+          "Apply thin petroleum jelly or antibiotic ointment.",
+          "Cover with a sterile bandage. Change daily or whenever wet."
+        ]
+      },
+      {
+        title: "🔥 Thermal Burns (Minor)",
+        steps: [
+          "Cool the burn under cool (not ice-cold) running water for 10-15 minutes immediately.",
+          "Remove tight items (rings, belts) before swelling occurs.",
+          "Do NOT pop any blisters that form.",
+          "Apply aloe vera gel or burn ointment. Never use butter, oil, or toothpaste.",
+          "Cover loosely with sterile non-stick gauze."
+        ]
+      },
+      {
+        title: "🟣 Sprains & Strains (P.R.I.C.E.)",
+        steps: [
+          "Protect: Support injured joint, avoid putting weight on it.",
+          "Rest: Cease sports or painful activities immediately.",
+          "Ice: Apply cold pack wrapped in a cloth for 15 minutes every 2-3 hours.",
+          "Compress: Wrap firmly with an elastic bandage (do not restrict blood circulation).",
+          "Elevate: Prop the limb above heart level on pillows."
+        ]
+      },
+      {
+        title: "🩸 Severe / Persistent Bleeding",
+        steps: [
+          "Call Emergency Services (112 / 911) immediately.",
+          "Press firmly and continuously directly over the wound with sterile gauze or clean cloth.",
+          "Do not lift the cloth to check. If soaked, place another cloth right on top.",
+          "Keep patient lying down and calm until medical help arrives."
+        ]
+      },
+      {
+        title: "🐕 Animal Bites",
+        steps: [
+          "Wash the bite thoroughly with soap and warm running water for 15 full minutes.",
+          "Apply an antiseptic if available and cover with a sterile bandage.",
+          "Always seek professional medical evaluation within 24 hours for Rabies and Tetanus prophylaxis."
+        ]
+      },
+      {
+        title: "👁️ Eye Irritation / Foreign Object",
+        steps: [
+          "Do NOT rub the eye under any circumstances.",
+          "Flush gently with clean saline or lukewarm tap water for 10-15 minutes.",
+          "If an object is penetrating or lodged in the eyeball, DO NOT pull it out. Cover with a paper cup and get immediate emergency care."
+        ]
+      }
+    ];
+
+    // Initialize UI
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderFirstAidLibrary();
+    });
+
+    // Navigation Router
+    function navigateTo(screenId) {
+      const screens = ['home', 'camera', 'questions', 'result', 'firstaid-library', 'hospitals'];
+      screens.forEach(s => {
+        const el = document.getElementById(`screen-${s}`);
+        if (el) el.classList.add('hidden');
+      });
+      const target = document.getElementById(`screen-${screenId}`);
+      if (target) target.classList.remove('hidden');
+
+      if (screenId === 'hospitals') {
+        setTimeout(initMap, 200);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      lucide.createIcons();
+    }
+
+    function startTriage() {
+      navigateTo('camera');
+    }
+
+    function skipPhoto() {
+      uploadedImageDataUrl = null;
+      navigateTo('questions');
+    }
+
+    // Language Toggle
+    function changeLanguage(lang) {
+      currentLang = lang;
+      const t = translations[lang] || translations.en;
+      document.getElementById('header-tagline').innerText = t.tagline;
+      document.getElementById('home-hero-title').innerText = t.heroTitle;
+      document.getElementById('home-hero-sub').innerText = t.heroSub;
+      document.getElementById('btn-start-assess').innerText = t.startBtn;
+      document.getElementById('btn-browse-fa').innerText = t.faBtn;
+    }
+
+    // Image Upload & Canvas Blur/Lighting Check
+    function handleImageSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        uploadedImageDataUrl = e.target.result;
+        const img = document.getElementById('image-preview');
+        img.src = uploadedImageDataUrl;
+        img.classList.remove('hidden');
+        document.getElementById('photo-placeholder').classList.add('hidden');
+        document.getElementById('photo-proceed-btn').classList.remove('hidden');
+
+        // Analyze image quality via Canvas
+        analyzeImageQuality(img);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function analyzeImageQuality(imgElement) {
+      imgElement.onload = () => {
+        const canvas = document.getElementById('analysis-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 150;
+        canvas.height = 150;
+        ctx.drawImage(imgElement, 0, 0, 150, 150);
+
+        const imgData = ctx.getImageData(0, 0, 150, 150).data;
+        let totalBrightness = 0;
+        for (let i = 0; i < imgData.length; i += 4) {
+          totalBrightness += (imgData[i] + imgData[i+1] + imgData[i+2]) / 3;
+        }
+        const avgBrightness = totalBrightness / (imgData.length / 4);
+
+        const alertBox = document.getElementById('quality-alert');
+        const alertText = document.getElementById('quality-alert-text');
+
+        if (avgBrightness < 40) {
+          alertBox.classList.remove('hidden');
+          alertText.innerText = "Warning: Photograph is underexposed/too dark. Please retake under better light or proceed with symptom questions.";
+        } else if (avgBrightness > 225) {
+          alertBox.classList.remove('hidden');
+          alertText.innerText = "Warning: Photograph is overexposed/washed out. Please retake or proceed with symptom questions.";
+        } else {
+          alertBox.classList.add('hidden');
+        }
+      };
+    }
+
+    // Web Speech API Voice Input
+    function toggleVoiceInput() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert("Speech recognition is not supported in this browser. Please type or select your answers.");
+        return;
+      }
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = currentLang === 'te' ? 'te-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-US';
+      recognition.interimResults = false;
+
+      const statusEl = document.getElementById('voice-status');
+      statusEl.innerText = "Listening...";
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.toLowerCase();
+        statusEl.innerText = "Captured!";
+        setTimeout(() => { statusEl.innerText = "Speak"; }, 2000);
+
+        // Auto-detect keywords from voice
+        const form = document.getElementById('triage-form');
+        if (transcript.includes('burn') || transcript.includes('fire')) form.q1_cause.value = 'burn';
+        if (transcript.includes('dog') || transcript.includes('bite') || transcript.includes('cat')) form.q1_cause.value = 'animal';
+        if (transcript.includes('fell') || transcript.includes('fall')) form.q1_cause.value = 'fall';
+        if (transcript.includes('severe') || transcript.includes('hurts bad')) form.q5_pain.value = 'severe';
+      };
+
+      recognition.onerror = () => {
+        statusEl.innerText = "Error, retry";
+        setTimeout(() => { statusEl.innerText = "Speak"; }, 2000);
+      };
+
+      recognition.start();
+    }
+
+    // TRIAGE ENGINE (Deterministic Rules + Risk Matrix)
+    function calculateTriage(event) {
+      event.preventDefault();
+      const form = event.target;
+      
+      const cause = form.q1_cause.value;
+      const location = form.q2_location.value;
+      const bleeding = form.q4_bleeding.value;
+      const pain = form.q5_pain.value;
+      const movement = form.q6_movement.value;
+      const swelling = form.q7_swelling.value;
+      const deformity = form.q7_deformity.value;
+
+      const redflags = Array.from(form.querySelectorAll('input[name="redflags"]:checked')).map(cb => cb.value);
+
+      let triageTier = 1;
+      let category = "Possible Superficial Minor Wound";
+      let reason = "";
+      let dos = [];
+      let donts = [];
+
+      // 1. HARD-STOP EMERGENCY RULES (Tier 4)
+      if (
+        bleeding === 'spurting' ||
+        deformity === 'bone_exposed' ||
+        redflags.includes('loc') ||
+        redflags.includes('breathing') ||
+        (location === 'head' && redflags.includes('vomiting'))
+      ) {
+        triageTier = 4;
+        category = "CRITICAL EMERGENCY: Severe Trauma / Bleeding / Shock Risk";
+        reason = "Immediate medical intervention is required. Signs of life-threatening blood loss, loss of consciousness, compromised breathing, or compound bone fracture were detected.";
+        dos = [
+          "Call Emergency Services (112 / 911 / 108) immediately.",
+          "Apply firm continuous two-handed pressure if bleeding heavily.",
+          "Do not move patient's neck or spine if high-speed impact occurred.",
+          "Keep patient lying flat and warm with a blanket."
+        ];
+        donts = [
+          "DO NOT remove any impaled or embedded objects.",
+          "DO NOT push protruding bones back into the wound.",
+          "DO NOT give food, water, or oral medications."
+        ];
+      }
+      // 2. URGENT MEDICAL ATTENTION RULES (Tier 3)
+      else if (
+        movement === 'none' ||
+        deformity === 'crooked' ||
+        pain === 'severe' ||
+        location === 'eye' ||
+        redflags.includes('numbness') ||
+        cause === 'road'
+      ) {
+        triageTier = 3;
+        category = "Urgent Medical Care Required (Possible Fracture / Severe Sprain / Eye Trauma)";
+        reason = "Reported symptoms indicate severe tissue injury, complete inability to bear weight, potential bone displacement, or eye involvement that should be evaluated by a medical team within hours.";
+        dos = [
+          "Immobilize the injured limb in the position found.",
+          "Remove rings, bracelets, or tight shoes before swelling locks them.",
+          "Apply an ice pack wrapped in a cloth to reduce swelling.",
+          "Proceed to the nearest Emergency Room or Urgent Care Center."
+        ];
+        donts = [
+          "DO NOT attempt to forcefully straighten or realign the limb.",
+          "DO NOT bear weight or walk on an injured leg/foot.",
+          "DO NOT rub an injured eye."
+        ];
+      }
+      // 3. MEDICAL CONSULTATION RECOMMENDED (Tier 2)
+      else if (
+        cause === 'animal' ||
+        bleeding === 'moderate' ||
+        pain === 'moderate' ||
+        swelling === 'rapid' ||
+        cause === 'burn'
+      ) {
+        triageTier = 2;
+        category = "Medical Consultation Advised (Doctor / Clinic Visit within 24 Hours)";
+        reason = "The injury requires evaluation for stitch closure, infection risk, burn care, or tetanus/rabies immunization (animal exposure).";
+        dos = [
+          cause === 'animal' ? "Wash bite wound aggressively under running tap water with soap for 15 minutes." : "Clean with clean running water and apply sterile dressing.",
+          "Rest the injured area and elevate above heart level.",
+          "Schedule a doctor or walk-in clinic visit within 24 hours."
+        ];
+        donts = [
+          "DO NOT pop burn blisters or scratch wound edges.",
+          "DO NOT apply ice directly on skin without a cloth towel.",
+          "DO NOT apply animal dung, turmeric paste, or unsterile home remedies."
+        ];
+      }
+      // 4. LOW CONCERN / FIRST AID (Tier 1)
+      else {
+        triageTier = 1;
+        category = "Low Concern: Minor Surface Injury";
+        reason = "Visual and symptom answers indicate minor superficial trauma without red flags or functional impairment.";
+        dos = [
+          "Rinse wound gently with clean tap water for 5 minutes.",
+          "Pat dry with clean sterile gauze and apply petroleum jelly or antiseptic ointment.",
+          "Cover with an adhesive bandage and change daily."
+        ];
+        donts = [
+          "DO NOT use harsh alcohol or hydrogen peroxide directly in open skin.",
+          "DO NOT pick at scabs as they heal."
+        ];
+      }
+
+      displayTriageResults(triageTier, category, reason, dos, donts);
+      navigateTo('result');
+    }
+
+    function displayTriageResults(tier, category, reason, dos, donts) {
+      document.getElementById('assessment-id').innerText = '#IC-' + Math.floor(1000 + Math.random() * 9000);
+      
+      const card = document.getElementById('triage-card');
+      const iconBox = document.getElementById('triage-icon-box');
+      const icon = document.getElementById('triage-icon');
+      const badge = document.getElementById('triage-level-badge');
+      const title = document.getElementById('triage-level-title');
+      const actionBadge = document.getElementById('action-badge-container');
+
+      card.className = "rounded-3xl p-6 sm:p-8 border shadow-lg space-y-6";
+      iconBox.className = "w-14 h-14 rounded-2xl flex items-center justify-center text-white flex-shrink-0 shadow";
+
+      if (tier === 4) {
+        card.classList.add('bg-rose-50/70', 'border-rose-300', 'pulse-emergency');
+        iconBox.classList.add('bg-rose-600');
+        icon.setAttribute('data-lucide', 'siren');
+        badge.innerText = "Level 4 — IMMEDIATE EMERGENCY";
+        badge.className = "text-[11px] font-black uppercase tracking-wider text-rose-700";
+        title.innerText = "EMERGENCY CARE REQUIRED";
+        title.className = "text-2xl font-black tracking-tight text-rose-950";
+        actionBadge.innerHTML = `<a href="tel:112" class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow"><i data-lucide="phone-call" class="w-4 h-4"></i> CALL 112 / 911</a>`;
+      } else if (tier === 3) {
+        card.classList.add('bg-amber-50/70', 'border-amber-300');
+        iconBox.classList.add('bg-amber-600');
+        icon.setAttribute('data-lucide', 'alert-triangle');
+        badge.innerText = "Level 3 — URGENT MEDICAL ATTENTION";
+        badge.className = "text-[11px] font-black uppercase tracking-wider text-amber-700";
+        title.innerText = "URGENT CLINIC VISIT NEEDED";
+        title.className = "text-2xl font-black tracking-tight text-amber-950";
+        actionBadge.innerHTML = `<span class="bg-amber-200 text-amber-900 font-bold px-3 py-1.5 rounded-lg text-xs">Urgent Care Within Hours</span>`;
+      } else if (tier === 2) {
+        card.classList.add('bg-blue-50/70', 'border-blue-200');
+        iconBox.classList.add('bg-blue-600');
+        icon.setAttribute('data-lucide', 'stethoscope');
+        badge.innerText = "Level 2 — MEDICAL CONSULTATION";
+        badge.className = "text-[11px] font-black uppercase tracking-wider text-blue-700";
+        title.innerText = "DOCTOR EVALUATION ADVISED";
+        title.className = "text-2xl font-black tracking-tight text-blue-950";
+        actionBadge.innerHTML = `<span class="bg-blue-100 text-blue-800 font-bold px-3 py-1.5 rounded-lg text-xs">Visit Within 24-48 Hours</span>`;
+      } else {
+        card.classList.add('bg-emerald-50/70', 'border-emerald-200');
+        iconBox.classList.add('bg-emerald-600');
+        icon.setAttribute('data-lucide', 'check-circle-2');
+        badge.innerText = "Level 1 — LOW CONCERN";
+        badge.className = "text-[11px] font-black uppercase tracking-wider text-emerald-700";
+        title.innerText = "HOME FIRST-AID SUFFICIENT";
+        title.className = "text-2xl font-black tracking-tight text-emerald-950";
+        actionBadge.innerHTML = `<span class="bg-emerald-100 text-emerald-800 font-bold px-3 py-1.5 rounded-lg text-xs">Self-Care & Monitor</span>`;
+      }
+
+      document.getElementById('triage-reason').innerText = `${category}\n\n${reason}`;
+
+      const dosList = document.getElementById('triage-dos');
+      dosList.innerHTML = dos.map(item => `<li>${item}</li>`).join('');
+
+      const dontsList = document.getElementById('triage-donts');
+      dontsList.innerHTML = donts.map(item => `<li>${item}</li>`).join('');
+
+      lucide.createIcons();
+    }
+
+    // Render First-Aid Manual
+    function renderFirstAidLibrary() {
+      const container = document.getElementById('fa-accordion');
+      container.innerHTML = firstAidData.map((item, idx) => `
+        <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 hover:bg-white transition space-y-2">
+          <h3 class="font-bold text-sm text-slate-800">${item.title}</h3>
+          <ul class="text-xs text-slate-600 space-y-1 list-disc list-inside">
+            ${item.steps.map(s => `<li>${s}</li>`).join('')}
+          </ul>
+        </div>
+      `).join('');
+    }
+
+    // OpenStreetMap & Geolocation Integration
+    function initMap() {
+      if (!mapInstance) {
+        mapInstance = L.map('map').setView([userCoords.lat, userCoords.lng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors'
+        }).addTo(mapInstance);
+      } else {
+        mapInstance.invalidateSize();
+      }
+      getUserLocation();
+    }
+
+    function getUserLocation() {
+      const statusEl = document.getElementById('gps-status');
+      if (navigator.geolocation) {
+        statusEl.innerText = "Acquiring GPS fix...";
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            statusEl.innerText = `GPS Location: ${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)}`;
+            if (mapInstance) {
+              mapInstance.setView([userCoords.lat, userCoords.lng], 14);
+              L.marker([userCoords.lat, userCoords.lng]).addTo(mapInstance).bindPopup("<b>You are here</b>").openPopup();
+            }
+            populateFacilities();
+          },
+          (err) => {
+            statusEl.innerText = "Location permission denied or unavailable. Showing regional default facilities.";
+            populateFacilities();
+          }
+        );
+      } else {
+        statusEl.innerText = "Geolocation not supported. Showing general facilities.";
+        populateFacilities();
+      }
+    }
+
+    function populateFacilities() {
+      const facilities = [
+        { name: "Apollo Emergency & Trauma Hospital", type: "24/7 Trauma Center", dist: "1.2 km", phone: "+91 40 2360 7777" },
+        { name: "Care Hospital & Urgent Care Clinic", type: "Multi-Specialty & ER", dist: "2.4 km", phone: "+91 40 3041 8888" },
+        { name: "MaxCure First-Response Clinic", type: "Walk-in & Urgent Care", dist: "3.8 km", phone: "+91 40 4940 4940" }
+      ];
+
+      const listContainer = document.getElementById('facility-list');
+      listContainer.innerHTML = facilities.map(f => `
+        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <h4 class="font-bold text-xs text-slate-800">${f.name}</h4>
+              <span class="text-[10px] bg-teal-100 text-teal-800 font-semibold px-2 py-0.5 rounded-full">${f.type}</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">Approx. distance: ${f.dist}</p>
+          </div>
+          <div class="flex gap-2">
+            <a href="tel:${f.phone}" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <i data-lucide="phone" class="w-3 h-3"></i> Call
+            </a>
+            <a href="https://www.google.com/maps/search/hospital/@${userCoords.lat},${userCoords.lng},14z" target="_blank" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <i data-lucide="navigation" class="w-3 h-3"></i> Directions
+            </a>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>
