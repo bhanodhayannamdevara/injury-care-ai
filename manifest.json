@@ -1,24 +1,36 @@
 {
+  "id": "/injury-care-ai/",
   "name": "InjuryCare AI",
   "short_name": "InjuryCare",
-  "description": "AI-based injury assessment and first aid guidance application.",
-  "start_url": "/injury-care-ai/",
+  "description": "AI-based injury assessment, triage and first aid guidance application.",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0F172A",
   "theme_color": "#0D9488",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
+  "categories": ["medical", "health", "lifestyle"],
   "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/192/2966/2966327.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "https://cdn-icons-png.flaticon.com/512/2966/2966327.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
+    }
+  ],
+  "screenshots": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/192/2966/2966327.png",
-      "sizes": "192x192",
+      "src": "https://cdn-icons-png.flaticon.com/512/2966/2966327.png",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "form_factor": "narrow",
+      "label": "InjuryCare AI Home Screen"
     }
   ]
 }
