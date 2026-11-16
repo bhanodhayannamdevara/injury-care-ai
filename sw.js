@@ -1,4 +1,4 @@
-const CACHE_NAME = 'injurycare-ai-v3';
+const CACHE_NAME = 'injurycare-ai-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
