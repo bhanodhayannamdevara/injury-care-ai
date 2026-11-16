@@ -431,9 +431,40 @@
       </div>
 
       <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-        <div>
-          <h2 class="text-xl font-bold text-slate-800">Nearby Healthcare Facilities</h2>
-          <p class="text-xs text-slate-500" id="gps-status">Finding medical facilities near your current location...</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Nearby Healthcare Facilities</h2>
+            <p class="text-xs text-slate-500" id="gps-status">Finding medical facilities near your current location...</p>
+          </div>
+          <!-- Quick link to Google Maps for all live top-rated hospitals -->
+          <a id="gmaps-all-hospitals-btn" href="https://www.google.com/maps/search/hospitals+near+me" target="_blank"
+             class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-sm transition">
+            <i data-lucide="star" class="w-3.5 h-3.5 fill-white"></i>
+            <span>All Top-Rated Hospitals (Google Maps)</span>
+          </a>
+        </div>
+
+        <!-- Filter & Search Controls -->
+        <div class="flex flex-wrap items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+          <div class="flex-1 min-w-[180px]">
+            <input type="text" id="facility-search-input" oninput="filterFacilities()"
+                   placeholder="Search hospital name or area..."
+                   class="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 text-slate-800 font-medium" />
+          </div>
+          <div class="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
+            <span>Radius:</span>
+            <select id="search-radius-select" onchange="populateFacilities()"
+                    class="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="5000">5 km</option>
+              <option value="10000">10 km</option>
+              <option value="20000" selected>20 km</option>
+              <option value="35000">35 km</option>
+              <option value="50000">50 km</option>
+            </select>
+          </div>
+          <span id="facility-count-badge" class="text-[11px] font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200">
+            Scanning...
+          </span>
         </div>
 
         <!-- Map Container -->
@@ -873,6 +904,9 @@
       getUserLocation();
     }
 
+    let currentFacilitiesList = [];
+    let facilityMarkers = [];
+
     function getUserLocation() {
       const statusEl = document.getElementById('gps-status');
       if (navigator.geolocation) {
@@ -881,16 +915,24 @@
           (pos) => {
             userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
             statusEl.innerText = `GPS Location: ${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)}`;
+
+            // Update master Google Maps button with exact coordinates
+            const gmapsBtn = document.getElementById('gmaps-all-hospitals-btn');
+            if (gmapsBtn) {
+              gmapsBtn.href = `https://www.google.com/maps/search/hospitals/@${userCoords.lat},${userCoords.lng},13z`;
+            }
+
             if (mapInstance) {
-              mapInstance.setView([userCoords.lat, userCoords.lng], 14);
-              L.marker([userCoords.lat, userCoords.lng]).addTo(mapInstance).bindPopup("<b>You are here</b>").openPopup();
+              mapInstance.setView([userCoords.lat, userCoords.lng], 13);
+              L.marker([userCoords.lat, userCoords.lng]).addTo(mapInstance).bindPopup("<b>You are here (Current Location)</b>").openPopup();
             }
             populateFacilities();
           },
           (err) => {
             statusEl.innerText = "Location permission denied or unavailable. Showing regional default facilities.";
             populateFacilities();
-          }
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
         );
       } else {
         statusEl.innerText = "Geolocation not supported. Showing general facilities.";
@@ -900,109 +942,210 @@
 
     function populateFacilities() {
       const listContainer = document.getElementById('facility-list');
+      const countBadge = document.getElementById('facility-count-badge');
       const lat = userCoords.lat;
       const lng = userCoords.lng;
 
+      const radiusSelect = document.getElementById('search-radius-select');
+      const radius = radiusSelect ? parseInt(radiusSelect.value) : 20000;
+      const radiusKm = (radius / 1000).toFixed(0);
+
+      // Clear existing markers from map
+      if (facilityMarkers && facilityMarkers.length > 0) {
+        facilityMarkers.forEach(m => mapInstance.removeLayer(m));
+        facilityMarkers = [];
+      }
+
       // Show loading state
+      if (countBadge) countBadge.innerText = 'Searching...';
       listContainer.innerHTML = `
-        <div class="p-4 text-center text-xs text-slate-500">
-          <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mb-2"></i>
-          <p>Searching for real hospitals near your location...</p>
+        <div class="p-6 text-center text-xs text-slate-500 space-y-2">
+          <i data-lucide="loader-2" class="w-6 h-6 animate-spin inline-block text-teal-600"></i>
+          <p class="font-bold text-slate-700">Scanning for all hospitals, emergency trauma centers & clinics within ${radiusKm} km...</p>
+          <p class="text-[11px] text-slate-400">Querying live OpenStreetMap medical database</p>
         </div>
       `;
       lucide.createIcons();
 
-      // Overpass API: Find real hospitals, clinics, and doctors within 10km radius
+      // Overpass Query: comprehensive nwr (nodes, ways, relations) covering all hospitals, clinics, nursing homes & doctors
       const overpassQuery = `
-        [out:json][timeout:15];
+        [out:json][timeout:30];
         (
-          node["amenity"="hospital"](around:10000,${lat},${lng});
-          way["amenity"="hospital"](around:10000,${lat},${lng});
-          node["amenity"="clinic"](around:10000,${lat},${lng});
-          way["amenity"="clinic"](around:10000,${lat},${lng});
-          node["amenity"="doctors"](around:10000,${lat},${lng});
+          nwr["amenity"="hospital"](around:${radius},${lat},${lng});
+          nwr["healthcare"="hospital"](around:${radius},${lat},${lng});
+          nwr["amenity"="clinic"](around:${radius},${lat},${lng});
+          nwr["healthcare"="clinic"](around:${radius},${lat},${lng});
+          nwr["healthcare"="centre"](around:${radius},${lat},${lng});
+          nwr["amenity"="nursing_home"](around:${radius},${lat},${lng});
+          nwr["healthcare"="nursing_home"](around:${radius},${lat},${lng});
+          nwr["amenity"="doctors"](around:${radius},${lat},${lng});
+          nwr["healthcare"="doctor"](around:${radius},${lat},${lng});
         );
-        out center body;
+        out center tags;
       `;
 
       const overpassUrl = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(overpassQuery);
 
       fetch(overpassUrl)
-        .then(response => response.json())
+        .then(response => {
+          if (!response.ok) throw new Error('Network response was not ok');
+          return response.json();
+        })
         .then(data => {
-          let facilities = data.elements
+          let rawList = (data.elements || [])
             .map(el => {
               const elLat = el.lat || (el.center && el.center.lat);
               const elLng = el.lon || (el.center && el.center.lon);
               const tags = el.tags || {};
-              const name = tags.name || tags['name:en'] || 'Unnamed Medical Facility';
-              const phone = tags.phone || tags['contact:phone'] || '';
-              const type = tags.amenity === 'hospital' ? 'Hospital' :
-                           tags.amenity === 'clinic' ? 'Clinic' : 'Doctor';
-              const emergency = tags.emergency === 'yes' ? ' (24/7 Emergency)' : '';
-              const dist = calculateDistance(lat, lng, elLat, elLng);
+              const name = tags.name || tags['name:en'] || tags['name:te'] || tags['name:hi'] || '';
+              const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || '';
+              const emergency = tags.emergency === 'yes' ? ' • 24/7 ER' : '';
+              
+              let type = 'Hospital';
+              if (tags.amenity === 'clinic' || tags.healthcare === 'clinic') type = 'Clinic';
+              else if (tags.amenity === 'nursing_home' || tags.healthcare === 'nursing_home') type = 'Nursing Home';
+              else if (tags.amenity === 'doctors' || tags.healthcare === 'doctor') type = 'Doctor / Specialist';
+              else if (tags.healthcare === 'centre') type = 'Health Centre';
 
-              return { name, type: type + emergency, dist, distNum: dist, phone, lat: elLat, lng: elLng };
+              const dist = elLat && elLng ? calculateDistance(lat, lng, elLat, elLng) : 999;
+              return {
+                id: el.id,
+                name: name.trim(),
+                type: type + emergency,
+                dist: dist,
+                distNum: parseFloat(dist),
+                phone: phone.trim(),
+                lat: elLat,
+                lng: elLng
+              };
             })
-            .filter(f => f.name !== 'Unnamed Medical Facility' || f.phone)
-            .sort((a, b) => parseFloat(a.distNum) - parseFloat(b.distNum))
-            .slice(0, 15); // Show top 15 nearest
+            .filter(f => f.name.length > 0 && f.lat && f.lng);
 
-          if (facilities.length === 0) {
-            listContainer.innerHTML = `
-              <div class="p-4 text-center text-xs text-slate-500">
-                <p>No hospitals found nearby via OpenStreetMap. Try Google Maps instead:</p>
-                <a href="https://www.google.com/maps/search/hospital/@${lat},${lng},13z" target="_blank"
-                   class="mt-2 inline-block bg-teal-600 text-white font-bold px-4 py-2 rounded-lg text-xs">
-                   Open Google Maps
-                </a>
-              </div>
-            `;
-            return;
+          // Deduplicate facilities with identical names within 200m
+          const seen = new Map();
+          const deduplicated = [];
+          for (const item of rawList) {
+            const key = item.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!seen.has(key)) {
+              seen.set(key, item);
+              deduplicated.push(item);
+            }
           }
 
-          // Add markers to map
-          facilities.forEach(f => {
-            if (f.lat && f.lng) {
-              const marker = L.marker([f.lat, f.lng]).addTo(mapInstance);
-              marker.bindPopup(`<b>${f.name}</b><br>${f.type}<br>${f.dist} km away`);
-            }
-          });
+          // Sort by nearest distance first
+          deduplicated.sort((a, b) => a.distNum - b.distNum);
+          currentFacilitiesList = deduplicated;
 
-          // Render facility cards
-          listContainer.innerHTML = facilities.map(f => `
-            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <h4 class="font-bold text-xs text-slate-800">${f.name}</h4>
-                  <span class="text-[10px] ${f.type.includes('Hospital') ? 'bg-rose-100 text-rose-800' : 'bg-teal-100 text-teal-800'} font-semibold px-2 py-0.5 rounded-full">${f.type}</span>
-                </div>
-                <p class="text-[11px] text-slate-500 mt-0.5">Distance: ${f.dist} km</p>
-              </div>
-              <div class="flex gap-2">
-                ${f.phone ? `<a href="tel:${f.phone}" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                  <i data-lucide="phone" class="w-3 h-3"></i> Call
-                </a>` : ''}
-                <a href="https://www.google.com/maps/dir/${lat},${lng}/${f.lat},${f.lng}" target="_blank" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                  <i data-lucide="navigation" class="w-3 h-3"></i> Directions
-                </a>
-              </div>
-            </div>
-          `).join('');
-          lucide.createIcons();
+          renderFacilitiesList(currentFacilitiesList);
         })
         .catch(err => {
           console.error('Overpass API error:', err);
+          if (countBadge) countBadge.innerText = 'Fallback Mode';
           listContainer.innerHTML = `
-            <div class="p-4 text-center text-xs text-slate-500">
-              <p>Could not fetch nearby hospitals. Open Google Maps instead:</p>
-              <a href="https://www.google.com/maps/search/hospital/@${lat},${lng},13z" target="_blank"
-                 class="mt-2 inline-block bg-teal-600 text-white font-bold px-4 py-2 rounded-lg text-xs">
-                 Search Hospitals on Google Maps
+            <div class="p-6 text-center text-xs text-slate-600 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+              <p class="font-bold text-amber-900">Hospital database timed out or slow network.</p>
+              <p class="text-xs text-amber-800">Tap below to view all hospitals, clinics and emergency rooms on Google Maps:</p>
+              <a href="https://www.google.com/maps/search/hospitals/@${lat},${lng},13z" target="_blank"
+                 class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm">
+                <i data-lucide="map-pin" class="w-4 h-4"></i>
+                <span>Open All Hospitals in Google Maps</span>
               </a>
             </div>
           `;
+          lucide.createIcons();
         });
+    }
+
+    function renderFacilitiesList(list) {
+      const listContainer = document.getElementById('facility-list');
+      const countBadge = document.getElementById('facility-count-badge');
+      const lat = userCoords.lat;
+      const lng = userCoords.lng;
+
+      // Clear existing markers
+      if (facilityMarkers && facilityMarkers.length > 0) {
+        facilityMarkers.forEach(m => mapInstance.removeLayer(m));
+        facilityMarkers = [];
+      }
+
+      if (countBadge) {
+        countBadge.innerText = `${list.length} Found`;
+      }
+
+      if (list.length === 0) {
+        listContainer.innerHTML = `
+          <div class="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <p class="font-bold text-slate-700">No medical facilities matched your search or radius.</p>
+            <p class="text-xs text-slate-500">Try increasing the radius to 35 km or 50 km, or check directly on Google Maps:</p>
+            <a href="https://www.google.com/maps/search/hospitals/@${lat},${lng},13z" target="_blank"
+               class="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2 rounded-xl text-xs">
+               <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+               <span>Search Google Maps for Nearby Hospitals</span>
+            </a>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      // Add map markers for each hospital
+      list.forEach(f => {
+        if (f.lat && f.lng && mapInstance) {
+          const marker = L.marker([f.lat, f.lng]).addTo(mapInstance);
+          marker.bindPopup(`<b>${f.name}</b><br><span style="color:#0D9488">${f.type}</span><br><b>${f.dist} km</b> away<br><a href="https://www.google.com/maps/dir/${lat},${lng}/${f.lat},${f.lng}" target="_blank" style="color:#2563eb;text-decoration:underline;font-weight:bold;">Get Directions</a>`);
+          facilityMarkers.push(marker);
+        }
+      });
+
+      // Render all cards
+      listContainer.innerHTML = list.map((f, idx) => `
+        <div class="p-4 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl shadow-sm transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center">${idx + 1}</span>
+              <h4 class="font-extrabold text-sm text-slate-900">${f.name}</h4>
+              <span class="text-[10px] ${f.type.includes('Hospital') ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-teal-100 text-teal-800 border border-teal-200'} font-bold px-2 py-0.5 rounded-full">${f.type}</span>
+            </div>
+            <div class="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+              <span class="flex items-center gap-1 font-bold text-slate-700">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-teal-600"></i> ${f.dist} km away
+              </span>
+              ${f.phone ? `<span class="flex items-center gap-1 text-slate-600"><i data-lucide="phone" class="w-3 h-3 text-slate-400"></i> ${f.phone}</span>` : ''}
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            ${f.phone ? `<a href="tel:${f.phone}" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="phone-call" class="w-3.5 h-3.5"></i> Call
+            </a>` : ''}
+            <a href="https://www.google.com/maps/dir/${lat},${lng}/${f.lat},${f.lng}" target="_blank"
+               class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="navigation" class="w-3.5 h-3.5 text-teal-400"></i> Directions
+            </a>
+            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name + ' hospital')}" target="_blank"
+               class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1"
+               title="View Google rating and patient reviews">
+              <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-500 text-amber-500"></i> Ratings & Info
+            </a>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function filterFacilities() {
+      const searchInput = document.getElementById('facility-search-input');
+      const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+      if (!query) {
+        renderFacilitiesList(currentFacilitiesList);
+        return;
+      }
+
+      const filtered = currentFacilitiesList.filter(f =>
+        f.name.toLowerCase().includes(query) || f.type.toLowerCase().includes(query)
+      );
+
+      renderFacilitiesList(filtered);
     }
 
     // Haversine formula to calculate distance between two GPS coordinates
