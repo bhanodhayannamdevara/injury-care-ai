@@ -456,7 +456,7 @@
   <!-- ================= SCRIPT & TRIAGE ENGINE ================= -->
   <script>
     // Global State
-    let currentLang = 'en';
+    let currentLang = (function(){ try{ return localStorage.getItem('injurycare-lang'); }catch(e){ return null; } })() || 'en';
     let uploadedImageDataUrl = null;
     let mapInstance = null;
     let userCoords = { lat: 17.3850, lng: 78.4867 }; // Default fallback coordinates
@@ -580,6 +580,8 @@
     // Language Toggle
     function changeLanguage(lang) {
       currentLang = lang;
+      // Persist language selection across sessions
+      try { localStorage.setItem('injurycare-lang', lang); } catch (e) {}
       const t = translations[lang] || translations.en;
       document.getElementById('header-tagline').innerText = t.tagline;
       document.getElementById('home-hero-title').innerText = t.heroTitle;
@@ -897,33 +899,122 @@
     }
 
     function populateFacilities() {
-      const facilities = [
-        { name: "Apollo Emergency & Trauma Hospital", type: "24/7 Trauma Center", dist: "1.2 km", phone: "+91 40 2360 7777" },
-        { name: "Care Hospital & Urgent Care Clinic", type: "Multi-Specialty & ER", dist: "2.4 km", phone: "+91 40 3041 8888" },
-        { name: "MaxCure First-Response Clinic", type: "Walk-in & Urgent Care", dist: "3.8 km", phone: "+91 40 4940 4940" }
-      ];
-
       const listContainer = document.getElementById('facility-list');
-      listContainer.innerHTML = facilities.map(f => `
-        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-2">
-              <h4 class="font-bold text-xs text-slate-800">${f.name}</h4>
-              <span class="text-[10px] bg-teal-100 text-teal-800 font-semibold px-2 py-0.5 rounded-full">${f.type}</span>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-0.5">Approx. distance: ${f.dist}</p>
-          </div>
-          <div class="flex gap-2">
-            <a href="tel:${f.phone}" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-              <i data-lucide="phone" class="w-3 h-3"></i> Call
-            </a>
-            <a href="https://www.google.com/maps/search/hospital/@${userCoords.lat},${userCoords.lng},14z" target="_blank" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-              <i data-lucide="navigation" class="w-3 h-3"></i> Directions
-            </a>
-          </div>
+      const lat = userCoords.lat;
+      const lng = userCoords.lng;
+
+      // Show loading state
+      listContainer.innerHTML = `
+        <div class="p-4 text-center text-xs text-slate-500">
+          <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mb-2"></i>
+          <p>Searching for real hospitals near your location...</p>
         </div>
-      `).join('');
+      `;
       lucide.createIcons();
+
+      // Overpass API: Find real hospitals, clinics, and doctors within 10km radius
+      const overpassQuery = `
+        [out:json][timeout:15];
+        (
+          node["amenity"="hospital"](around:10000,${lat},${lng});
+          way["amenity"="hospital"](around:10000,${lat},${lng});
+          node["amenity"="clinic"](around:10000,${lat},${lng});
+          way["amenity"="clinic"](around:10000,${lat},${lng});
+          node["amenity"="doctors"](around:10000,${lat},${lng});
+        );
+        out center body;
+      `;
+
+      const overpassUrl = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(overpassQuery);
+
+      fetch(overpassUrl)
+        .then(response => response.json())
+        .then(data => {
+          let facilities = data.elements
+            .map(el => {
+              const elLat = el.lat || (el.center && el.center.lat);
+              const elLng = el.lon || (el.center && el.center.lon);
+              const tags = el.tags || {};
+              const name = tags.name || tags['name:en'] || 'Unnamed Medical Facility';
+              const phone = tags.phone || tags['contact:phone'] || '';
+              const type = tags.amenity === 'hospital' ? 'Hospital' :
+                           tags.amenity === 'clinic' ? 'Clinic' : 'Doctor';
+              const emergency = tags.emergency === 'yes' ? ' (24/7 Emergency)' : '';
+              const dist = calculateDistance(lat, lng, elLat, elLng);
+
+              return { name, type: type + emergency, dist, distNum: dist, phone, lat: elLat, lng: elLng };
+            })
+            .filter(f => f.name !== 'Unnamed Medical Facility' || f.phone)
+            .sort((a, b) => parseFloat(a.distNum) - parseFloat(b.distNum))
+            .slice(0, 15); // Show top 15 nearest
+
+          if (facilities.length === 0) {
+            listContainer.innerHTML = `
+              <div class="p-4 text-center text-xs text-slate-500">
+                <p>No hospitals found nearby via OpenStreetMap. Try Google Maps instead:</p>
+                <a href="https://www.google.com/maps/search/hospital/@${lat},${lng},13z" target="_blank"
+                   class="mt-2 inline-block bg-teal-600 text-white font-bold px-4 py-2 rounded-lg text-xs">
+                   Open Google Maps
+                </a>
+              </div>
+            `;
+            return;
+          }
+
+          // Add markers to map
+          facilities.forEach(f => {
+            if (f.lat && f.lng) {
+              const marker = L.marker([f.lat, f.lng]).addTo(mapInstance);
+              marker.bindPopup(`<b>${f.name}</b><br>${f.type}<br>${f.dist} km away`);
+            }
+          });
+
+          // Render facility cards
+          listContainer.innerHTML = facilities.map(f => `
+            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h4 class="font-bold text-xs text-slate-800">${f.name}</h4>
+                  <span class="text-[10px] ${f.type.includes('Hospital') ? 'bg-rose-100 text-rose-800' : 'bg-teal-100 text-teal-800'} font-semibold px-2 py-0.5 rounded-full">${f.type}</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-0.5">Distance: ${f.dist} km</p>
+              </div>
+              <div class="flex gap-2">
+                ${f.phone ? `<a href="tel:${f.phone}" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                  <i data-lucide="phone" class="w-3 h-3"></i> Call
+                </a>` : ''}
+                <a href="https://www.google.com/maps/dir/${lat},${lng}/${f.lat},${f.lng}" target="_blank" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                  <i data-lucide="navigation" class="w-3 h-3"></i> Directions
+                </a>
+              </div>
+            </div>
+          `).join('');
+          lucide.createIcons();
+        })
+        .catch(err => {
+          console.error('Overpass API error:', err);
+          listContainer.innerHTML = `
+            <div class="p-4 text-center text-xs text-slate-500">
+              <p>Could not fetch nearby hospitals. Open Google Maps instead:</p>
+              <a href="https://www.google.com/maps/search/hospital/@${lat},${lng},13z" target="_blank"
+                 class="mt-2 inline-block bg-teal-600 text-white font-bold px-4 py-2 rounded-lg text-xs">
+                 Search Hospitals on Google Maps
+              </a>
+            </div>
+          `;
+        });
+    }
+
+    // Haversine formula to calculate distance between two GPS coordinates
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Earth radius in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return (R * c).toFixed(1);
     }
   </script>
   <script>
